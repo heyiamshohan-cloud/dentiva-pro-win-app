@@ -29,20 +29,35 @@
 | Phase | State | Evidence |
 |---|---|---|
 | 1. Repo + architecture | VERIFIED | build OK; tsc strict green |
-| 2. DB + migrations | VERIFIED | integration/database.test.ts green |
+| 2. DB + migrations | VERIFIED | migration chain 0001+0002; integration/database.test.ts green |
 | 3. Security foundation | VERIFIED | integration/auth.test.ts green (lockout, RBAC deny, redaction, scrypt) |
-| 4–23. Feature services + IPC + documents/backup | VERIFIED | 134 integration+unit tests green (12 files), incl. doc forensics, restore batteries |
-| 24. Performance/scale | VERIFIED @ 10K | tests/perf/scale.test.ts 10/10 green at N=10,000 (see timings below); 100K profile runnable via DENTIVA_SCALE=100000 npm run perf |
-| 25–30. Forensic audits | IN PROGRESS | real defects fixed so far: lot-expiry GROUP BY, import row counter, FTS delete triggers, payment placeholder counts, BAD date query ranges; audit incomplete |
+| 4–23. Feature services + IPC + documents/backup | VERIFIED | 146 integration+unit tests green (14 files), incl. doc forensics, restore batteries |
+| 24. Performance/scale | VERIFIED @ 10K | tests/perf/scale.test.ts 10/10 green at N=10,000; 100K profile via DENTIVA_SCALE=100000 |
+| 25. Renderer application | VERIFIED | 15 routes registered; contract-verified renderer (all api() channels diffed against gateway table); tsc clean; out/renderer builds |
+| 26–30. Forensic audits + packaging | IN PROGRESS | renderer contract audit 2026-09-26 fixed: invoices.list status filter, statements shape, tooth states, users.resetPassword id, attachments sourcePath flow, emptyPayload strictness; packaging not executed |
 | 31–33. Windows packaging/clean install/workflow | NOT STARTED | scripts/pack.mjs + electron-builder.yml present, not yet executed |
 | 34–36. Final regression/release | NOT STARTED | - |
+
+## RENDERER SURFACE (2026-09-26)
+- Routes: /dashboard, /patients (+dup pre-check +admin merge flow), /patient (8 tabs: overview w/ medical panel + alerts,
+  visits w/ procedures, FDI odontogram per TOOTH_STATES, treatment plans w/ propose/accept/convert-to-visit,
+  prescriptions w/ C/C+O/E + items + PDF print, billing w/ account statement, attachments via system.pickFile,
+  cursor-paged timeline), /calendar (day/week/month/agenda + booking + check-in), /queue,
+  /billing + /invoice (idempotent payments, void, refund), /inventory (5 sections),
+  /treatments, /reports (all 12 reportQuery kinds), /expenses, /settings, /users, /backup (restore w/ validation), /audit, /data (CSV import dry-run→commit / export BOM download).
+- Shared widget: patientPickerModal (billing + schedule + merge).
+- new IPC: patients.restore (patients.archive perm); schema v2 adds patients.blood_group (forms persist it).
+- Rule encoded for future screens: emptyPayload contracts are STRICT — renderer api() always sends an object;
+  never invent channels/fields — grep gateway route + zod schema before writing the call.
 
 ## EXECUTED EVIDENCE (2026-09-25)
 - `npx vitest run` → 134/134 passed (12 files: 3 unit + 9 integration).
 - `npx tsc --noEmit` → clean (src + tests).
 - `node scripts/build.mjs` → builds out/ (main+preload+renderer bundles).
 - `npx vitest run --config vitest.perf.config.ts` (DENTIVA_SCALE=10000) → 10/10 green; timings: seed 10K patients ≈ 4.8s (~470µs/pt), phone/name/code search ≈ 0–1ms, dashboard ≈ 4ms, full 200-page pagination of all 10K rows ≈ 260ms.
-- Commits: aeaf7b9 (foundation, 104 tests) → 3afc963 (forensic batteries +2 defect fixes, 134 tests).
+- `npx vitest run` 2026-09-26 → 146/146 passed (14 files).
+- Renderer contract audit diffed every `api('<domain>.<action>')` literal in src/renderer against the gateway route table — zero dangling channels.
+- Commits: … 763b782 (initial) → b9003d6 (renderer screen suite + contracts reconciliation + schema v2 blood_group + patients.restore).
 
 ## DEFECTS FOUND & FIXED THIS LOOP (with evidence)
 1. importExport swallowed per-row duplicates but still counted them as inserted → run() now returns inserted|skipped; counters truthful (tests/integration/operations.test.ts).

@@ -1,6 +1,6 @@
 // Patients — registry with real server-side search/pagination, registration with duplicate
 // intervention, archive flow. No local filtering of already-truncated lists anywhere.
-import { api, ApiError } from '../api';
+import { api, ApiError, hasRole } from '../api';
 import { h, mount, icon, toast, modal, field, readForm, dataTable, pagerStrip, badge, fmtDate, PagedResult, confirmDialog } from '../ui';
 import { navigate } from '../app';
 
@@ -21,6 +21,7 @@ export async function patientsScreen(q: URLSearchParams): Promise<HTMLElement> {
     h('div', {}, h('h1', { text: 'Patients' }), h('p', { class: 'muted', text: 'Registered patient registry' })),
     h('div', { class: 'btn-row' },
       h('button', { class: 'btn', onclick: () => { state.archived = !state.archived; state.page = 1; void load(); } }, 'Archived'),
+      hasRole('admin') ? h('button', { class: 'btn', onclick: openMerge }, 'Merge duplicates…') : '',
       h('button', { class: 'btn btn-primary', onclick: openCreate }, h('span', {}, icon('add')), 'New patient'),
     ));
 
@@ -113,6 +114,37 @@ export async function patientsScreen(q: URLSearchParams): Promise<HTMLElement> {
   if (q.get('new') === '1') setTimeout(openCreate, 50);
   await load();
   return root;
+}
+
+
+async function openMerge(): Promise<void> {
+  const { patientPickerModal } = await import('../widgets');
+  let keep: { id: string; code: string; name: string } | null = null;
+  let remove: { id: string; code: string; name: string } | null = null;
+  const stateEl = h('p', { class: 'muted', text: 'Step 1: choose the record to KEEP (all records will point here).' });
+  const close = modal('Merge patient records', () => h('div', { class: 'col-gap' },
+    h('p', { class: 'warn-text', text: 'Merging is permanent: visits, invoices, payments, appointments and files of the merged-away record are moved to the kept record, then the duplicate is removed. This cannot be undone.' }),
+    stateEl,
+    h('div', { class: 'btn-row end' },
+      h('button', { class: 'btn', onclick: () => close() }, 'Cancel'),
+    ),
+  ));
+  patientPickerModal((p) => {
+    if (!keep) { keep = p; stateEl.textContent = `Keep ${p.code} ${p.name}. Step 2: choose the record to MERGE AWAY.`; }
+    else if (!remove) {
+      if (p.id === keep.id) { stateEl.textContent = 'You must pick a different second record.'; return; }
+      remove = p;
+      void confirmDialog(`Merge ${remove.code} ${remove.name}`, `All history of ${remove.name} moves under ${keep.name}; the duplicate record is removed. Continue?`, 'Merge now', true).then(async (ok) => {
+        if (!ok) return;
+        try {
+          await api('patients.merge', { keepId: keep!.id, removeId: remove!.id });
+          toast('ok', 'Records merged');
+          close();
+          navigate(`/patient?id=${keep!.id}`);
+        } catch (e) { toast('err', (e as Error).message); }
+      });
+    }
+  });
 }
 
 export function ageOf(dob: string): string {

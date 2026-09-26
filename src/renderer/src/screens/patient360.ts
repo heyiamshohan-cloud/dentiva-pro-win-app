@@ -24,6 +24,7 @@ const TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'visits', label: 'Visits' },
   { id: 'chart', label: 'Dental chart' },
+  { id: 'plan', label: 'Treatment plan' },
   { id: 'prescriptions', label: 'Prescriptions' },
   { id: 'billing', label: 'Billing' },
   { id: 'files', label: 'Attachments' },
@@ -75,6 +76,7 @@ export async function patientScreen(q: URLSearchParams): Promise<HTMLElement> {
           case 'overview': return await overviewTab(id);
           case 'visits': return await visitsTab(id);
           case 'chart': return await chartTab(id);
+          case 'plan': return await planTab(id);
           case 'prescriptions': return await prescriptionsTab(id);
           case 'billing': return await billingTab(id);
           case 'files': return await filesTab(id);
@@ -445,6 +447,133 @@ async function chartTab(patientId: string): Promise<El> {
 
 // ---------------- prescriptions ----------------
 interface RxRow { id: string; rx_no: string; date: string; finalized_at: string | null; item_count: number }
+
+// ---------------- treatment plans ----------------
+interface PlanItemRow { id: string; plan_id: string; treatment_id: string | null; name: string; tooth: number | null; qty: number; est_price_paisa: number; seq: number }
+interface PlanRow { id: string; title: string; status: string; notes: string; created_at: string; items: PlanItemRow[] }
+const PLAN_STATUS_BADGE: Record<string, 'ok' | 'warn' | 'err' | 'info' | 'muted'> = { draft: 'muted', proposed: 'info', accepted: 'ok', rejected: 'err', completed: 'ok' };
+
+async function planTab(patientId: string): Promise<El> {
+  const host = h('div', { class: 'col-gap' });
+  const listHost = h('div');
+  let txCatalog: { id: string; name: string; price_paisa: number }[] = [];
+  void api<{ rows: { id: string; name: string; price_paisa: number }[] }>('treatments.list', { page: 1, pageSize: 500, includeInactive: false })
+    .then((r) => { txCatalog = r.rows; })
+    .catch(() => undefined);
+  async function load(): Promise<void> {
+    const plans = await api<PlanRow[]>('plans.list', { patientId });
+    mount(listHost, ...(plans.length ? plans.map((pl) => {
+      const total = pl.items.reduce((a, i) => a + i.est_price_paisa * i.qty, 0);
+      const pendingItems = pl.items.filter((i) => i).map((i) => i.id);
+      return h('section', { class: 'card' },
+        h('div', { class: 'card-head' },
+          h('div', { class: 'card-title' }, h('h3', { text: pl.title }), badge(PLAN_STATUS_BADGE[pl.status] ?? 'muted', pl.status)),
+          h('div', { class: 'btn-row' },
+            pl.status === 'draft' && hasRole('dentist')
+              ? h('button', { class: 'btn-link', onclick: async () => { await api('plans.setStatus', { id: pl.id, status: 'proposed' }); await load(); } }, 'Propose') : '',
+            pl.status === 'proposed'
+              ? h('button', { class: 'btn-link', onclick: async () => { await api('plans.setStatus', { id: pl.id, status: 'accepted' }); await load(); } }, 'Accept')
+              : '',
+            (pl.status === 'draft' || pl.status === 'proposed')
+              ? h('button', { class: 'btn-link danger', onclick: async () => { await api('plans.setStatus', { id: pl.id, status: 'rejected' }); await load(); } }, 'Reject') : '',
+            pl.status === 'accepted' && hasRole('dentist')
+              ? h('button', { class: 'btn-link', onclick: () => void convertPlan(pl) }, 'Convert all to visit') : '',
+          )),
+        pl.notes ? h('p', { class: 'muted', text: pl.notes }) : '',
+        dataTable<PlanItemRow>([
+          { label: 'Procedure', render: (r) => h('span', { class: 'primary-cell', text: r.name }) },
+          { label: 'Tooth', render: (r) => r.tooth ? String(r.tooth) : '—', width: '80px' },
+          { label: 'Qty', align: 'right', render: (r) => String(r.qty), width: '60px' },
+          { label: 'Est. price', align: 'right', render: (r) => taka(r.est_price_paisa) },
+          { label: 'Est. total', align: 'right', render: (r) => taka(r.est_price_paisa * r.qty) },
+        ], pl.items, { empty: 'No line items' }),
+        h('div', { class: 'btn-row end muted', text: `Estimated plan total: ${taka(total)}` }),
+      );
+    }) : [h('div', { class: 'empty-title', text: 'No treatment plans yet' })]));
+  }
+  function convertPlan(pl: PlanRow): void {
+    confirmDialog('Convert plan to visit',
+      `Start a new visit for this patient and add all ${pl.items.length} planned procedure${pl.items.length === 1 ? '' : 's'} as visit items? Amounts will carry the estimated prices.`,
+      'Convert', false).then(async (ok) => {
+      if (!ok) return;
+      try {
+        const r = await api<{ converted: number; visitId: string }>('plans.convert', { planId: pl.id, itemIds: pl.items.map((i) => i.id), visitId: null });
+        toast('ok', `${r.converted} procedures added to new visit`);
+        navigate(`/patient?id=${patientId}&tab=visits`);
+      } catch (e) { toast('err', (e as Error).message); }
+    });
+  }
+  function openNewPlan(): void {
+    modal('New treatment plan', (close) => {
+      const items: { treatmentId: string | null; name: string; tooth: number | null; qty: number; estPricePaisa: number }[] = [];
+      const linesHost = h('div', { class: 'list' });
+      function renderLines(): void {
+        mount(linesHost, ...(items.length
+          ? items.map((l, i) => h('div', { class: 'list-row static' },
+              h('span', { class: 'list-title', text: l.name }),
+              h('span', { class: 'muted', text: `${l.tooth ? `t${l.tooth} · ` : ''}${l.qty} × ${taka(l.estPricePaisa)}` }),
+              h('button', { class: 'btn-link danger', onclick: () => { items.splice(i, 1); renderLines(); } }, 'Remove')))
+          : [h('div', { class: 'empty-title', text: 'No procedures added yet' })]));
+      }
+      renderLines();
+      const head = h('div', { class: 'form-grid' },
+        field({ name: 'title', label: 'Plan title', required: true, placeholder: 'e.g. Full-mouth rehabilitation' }),
+        field({ name: 'notes', label: 'Notes', type: 'textarea', rows: 2 }),
+      );
+      const addForm = h('div', { class: 'form-grid' },
+        field({ name: 'treatment', label: 'Procedure (from catalog)', type: 'select', options: [{ value: '', label: 'Custom…' }, ...txCatalog.map((t) => ({ value: t.id, label: t.name }))] }),
+        field({ name: 'customName', label: 'Custom name (if Custom…)', placeholder: 'e.g. Surgical extraction' }),
+        field({ name: 'tooth', label: 'Tooth (optional, FDI 11-48/51-85)', type: 'number', min: 11, max: 85 }),
+        field({ name: 'qty', label: 'Qty', type: 'number', value: 1, min: 1, max: 100 }),
+        field({ name: 'price', label: 'Est. price (Tk, blank = catalog)', type: 'number', min: 0 }),
+      );
+      const err2 = h('div', { class: 'login-err' });
+      return h('div', { class: 'col-gap' },
+        head, addForm,
+        h('button', {
+          class: 'btn', onclick: () => {
+            const v = readForm(addForm);
+            const t = txCatalog.find((x) => x.id === v.treatment);
+            const name = t ? t.name : String(v.customName ?? '').trim();
+            if (!name) { toast('err', 'Choose a catalog procedure or give a custom name'); return; }
+            const toothRaw = v.tooth === null || v.tooth === '' || v.tooth === undefined ? null : Number(v.tooth);
+            const priceTk = v.price === null || v.price === '' || v.price === undefined ? (t ? t.price_paisa / 100 : 0) : Number(v.price);
+            items.push({
+              treatmentId: t ? t.id : null, name,
+              tooth: Number.isInteger(toothRaw) ? toothRaw : null,
+              qty: Math.max(1, Number(v.qty ?? 1)),
+              estPricePaisa: Math.round((Number.isFinite(priceTk) ? priceTk : 0) * 100),
+            });
+            renderLines();
+          },
+        }, '＋ Add procedure'),
+        linesHost, err2,
+        h('div', { class: 'btn-row end' },
+          h('button', { class: 'btn', onclick: close }, 'Cancel'),
+          h('button', {
+            class: 'btn btn-primary', onclick: async () => {
+              err2.textContent = '';
+              const v = readForm(head);
+              if (!String(v.title ?? '').trim()) { err2.textContent = 'Title required'; return; }
+              if (!items.length) { err2.textContent = 'Add at least one procedure'; return; }
+              try {
+                await api('plans.create', {
+                  patientId, title: String(v.title).trim(), notes: String(v.notes ?? ''),
+                  items: items.map((l, i) => ({ treatmentId: l.treatmentId, name: l.name, tooth: l.tooth, qty: l.qty, estPricePaisa: l.estPricePaisa, seq: i })),
+                });
+                toast('ok', 'Plan created'); close(); await load();
+              } catch (e) { err2.textContent = (e as Error).message; }
+            },
+          }, 'Create plan')));
+    }, { wide: true });
+  }
+  host.append(
+    h('div', { class: 'btn-row' },
+      hasRole('dentist') ? h('button', { class: 'btn btn-primary', onclick: openNewPlan }, h('span', {}, icon('add')), 'New plan') : ''),
+    listHost);
+  await load();
+  return host;
+}
 
 async function prescriptionsTab(patientId: string): Promise<El> {
   const host = h('div', { class: 'col-gap' });
