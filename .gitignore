@@ -1,0 +1,16 @@
+node_modules/
+out/
+release/
+dist/
+*.log
+.DS_Store
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.backup
+/tmp/
+coverage/
+*.tsbuildinfo
+.env
+.env.local

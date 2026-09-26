@@ -1,0 +1,31 @@
+appId: com.dentiva.pro
+productName: Dentiva Pro
+copyright: Copyright © 2026 Dentiva
+directories:
+  output: release
+  buildResources: build
+files:
+  - out/**
+  - package.json
+  - "!**/*.map"
+asar: true
+compression: maximum
+publish: null
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+    - target: zip
+      arch: [x64]
+  artifactName: DentivaPro-${version}-${arch}-${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Dentiva Pro
+portable:
+  artifactName: DentivaPro-${version}-portable.${ext}

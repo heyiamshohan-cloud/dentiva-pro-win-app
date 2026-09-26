@@ -1,0 +1,47 @@
+/* Dentiva Pro - design tokens (single source for every visual value) */
+:root {
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Cascadia Mono", "Consolas", monospace;
+
+  --fs-xs: 11px; --fs-sm: 12px; --fs-md: 13px; --fs-lg: 14px; --fs-xl: 16px;
+  --fs-h3: 17px; --fs-h2: 20px; --fs-h1: 24px;
+  --fw-regular: 400; --fw-medium: 500; --fw-semibold: 600; --fw-bold: 700;
+  --lh-tight: 1.25; --lh-normal: 1.45;
+
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 24px; --sp-8: 32px;
+
+  --radius-sm: 4px; --radius-md: 6px; --radius-lg: 8px;
+
+  --c-bg: #f4f6f9;
+  --c-surface: #ffffff;
+  --c-surface-2: #f8fafc;
+  --c-surface-3: #eef2f6;
+  --c-border: #dde3ea;
+  --c-border-strong: #c6ced8;
+  --c-text: #17212e;
+  --c-text-muted: #5c6a7c;
+  --c-text-faint: #8a95a5;
+
+  --c-accent: #0f4c5c;
+  --c-accent-hover: #0c3f4d;
+  --c-accent-soft: #e3eef1;
+  --c-accent-text: #ffffff;
+
+  --c-success: #166534; --c-success-soft: #dcfce7;
+  --c-warning: #92400e; --c-warning-soft: #fef3c7;
+  --c-danger: #b91c1c; --c-danger-soft: #fee2e2;
+  --c-info: #1d4ed8; --c-info-soft: #dbeafe;
+
+  --c-focus: #2563eb;
+  --shadow-1: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-2: 0 4px 14px rgba(16, 24, 40, 0.10);
+  --shadow-3: 0 12px 40px rgba(16, 24, 40, 0.22);
+
+  --sidebar-bg: #10212b;
+  --sidebar-text: #b9c7cf;
+  --sidebar-text-active: #ffffff;
+  --sidebar-item-active: #1a3646;
+
+  --z-modal: 50;
+  --z-toast: 60;
+}
